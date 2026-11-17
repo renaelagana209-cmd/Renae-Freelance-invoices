@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cashier</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --accent:#16a34a; --accent-dark:#15803d; --danger:#dc2626; --muted:#6b7280; --border:#e5e7eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:#111827; }
+  header { background:#111827; color:#fff; padding:14px 24px; display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; }
+  nav button { background:transparent; color:#d1d5db; border:none; padding:8px 14px; font-size:14px; cursor:pointer; border-radius:6px; }
+  nav button.active { background:#374151; color:#fff; }
+  main { max-width:1100px; margin:20px auto; padding:0 16px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .card .num { font-size:24px; font-weight:700; }
+  .card .label { color:var(--muted); font-size:13px; }
+  .card.good .num { color:var(--accent); }
+  section.view { display:none; }
+  section.view.active { display:block; }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  .register { display:grid; grid-template-columns:1fr 360px; gap:16px; align-items:start; }
+  @media (max-width:800px) { .register { grid-template-columns:1fr; } }
+  .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .product-tile { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px; cursor:pointer; text-align:left; font-size:14px; }
+  .product-tile:hover { border-color:var(--accent); box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .product-tile .name { font-weight:600; margin-bottom:4px; }
+  .product-tile .price { color:var(--accent-dark); font-weight:700; }
+  .product-tile .stock { color:var(--muted); font-size:12px; }
+  .product-tile .stock.low { color:var(--danger); font-weight:600; }
+  #cart { position:sticky; top:16px; }
+  #cart ul { list-style:none; margin:0 0 10px; padding:0; max-height:320px; overflow-y:auto; }
+  #cart li { display:flex; align-items:center; gap:6px; padding:6px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  #cart li .nm { flex:1; }
+  .qty-btn { width:26px; height:26px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:14px; }
+  .cart-line total { font-weight:600; }
+  .checkout-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  input, select, textarea { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+  button.primary { background:var(--accent); color:#fff; border:none; padding:10px 18px; border-radius:6px; font-size:15px; cursor:pointer; font-weight:600; }
+  button.primary:hover { background:var(--accent-dark); }
+  button.primary:disabled { background:#9ca3af; cursor:not-allowed; }
+  button.ghost { background:#fff; border:1px solid var(--border); padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  td.r, th.r { text-align:right; }
+  .icon-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:4px; }
+  .muted { color:var(--muted); }
+  .badge { font-size:11px; padding:2px 10px; border-radius:99px; font-weight:600; text-transform:uppercase; }
+  .badge.cash { background:#dcfce7; color:#166534; }
+  .badge.card { background:#dbeafe; color:#1d4ed8; }
+  .badge.other { background:#e5e7eb; color:#374151; }
+  .flash { background:#fee2e2; color:var(--danger); padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:14px; display:none; }
+  form { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; align-items:flex-start; }
+  form input { min-width:110px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧾 Cashier</h1>
+  <nav>
+    <button data-view="register" class="active">Register</button>
+    <button data-view="sales">Sales</button>
+    <button data-view="products">Products</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+</header>
+<main>
+  <div class="flash" id="flash"></div>
+
+  <section class="view active" id="view-register">
+    <div class="cards" id="reg-cards"></div>
+    <div class="register">
+      <div class="panel">
+        <h2>Products <span class="muted" style="font-weight:400">(tap to add to cart)</span></h2>
+        <div class="product-grid" id="product-grid"></div>
+      </div>
+      <div class="panel" id="cart">
+        <h2>Cart</h2>
+        <ul id="cart-list"></ul>
+        <div class="checkout-row">
+          <input type="number" id="discount" placeholder="Discount" min="0" step="0.01" style="width:100px" oninput="renderCart()">
+          <input type="number" id="tax" placeholder="Tax %" min="0" step="0.01" style="width:90px" oninput="renderCart()">
+          <select id="payment" style="flex:1">
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="checkout-row">
+          <input type="text" id="customer" placeholder="Customer name (optional)" style="flex:1">
+        </div>
+        <div class="checkout-row" style="justify-content:space-between; font-size:15px">
+          <span class="muted" id="cart-subtotal"></span>
+          <span>Total <strong id="cart-total" style="font-size:18px"></strong></span>
+        </div>
+        <button class="primary" id="checkout" style="width:100%">Complete sale</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-sales">
+    <div class="panel">
+      <h2>Sales history</h2>
+      <table>
+        <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th>Payment</th><th class="r">Total</th><th></th></tr></thead>
+        <tbody id="sales-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-products">
+    <div class="panel">
+      <h2>Add product</h2>
+      <form id="product-form">
+        <input type="text" name="name" placeholder="Product name" required style="flex:2">
+        <input type="number" name="price" placeholder="Price" min="0" step="0.01" required>
+        <input type="number" name="stock" placeholder="Stock (blank = untracked)" min="0" step="1">
+        <button class="primary" type="submit">Add</button>
+      </form>
+      <table>
+        <thead><tr><th>Name</th><th class="r">Price</th><th class="r">Stock</th><th></th></tr></thead>
+        <tbody id="product-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <h2>Shop details (appear on receipts)</h2>
+      <form id="settings-form">
+        <input type="text" name="business_name" placeholder="Shop name" style="flex:2;min-width:180px">
+        <input type="text" name="currency" placeholder="Currency symbol" style="width:130px">
+        <button class="primary" type="submit">Save</button>
+        <textarea name="business_address" placeholder="Address"></textarea>
+        <textarea name="receipt_footer" placeholder="Receipt footer message"></textarea>
+      </form>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+let SETTINGS = {currency:'$'};
+let PRODUCTS = [];
+let CART = [];
+
+const api = async (url, opts) => {
+  const res = await fetch(url, opts && {headers:{'Content-Type':'application/json'}, ...opts});
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+  return res.json();
+};
+const post = (url, body) => api(url, {method:'POST', body:JSON.stringify(body)});
+const put = (url, body) => api(url, {method:'PUT', body:JSON.stringify(body)});
+const del = url => api(url, {method:'DELETE'});
+const fmt = v => SETTINGS.currency + (v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+function flash(msg) {
+  const f = $('#flash');
+  f.textContent = msg; f.style.display = 'block';
+  setTimeout(() => f.style.display = 'none', 4000);
+}
+
+document.querySelectorAll('nav button').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('section.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
+  ({register: loadRegister, sales: loadSales, products: loadProductMgmt, settings: loadSettings})[btn.dataset.view]();
+});
+
+async function loadRegister() {
+  PRODUCTS = await api('/api/products');
+  const grid = $('#product-grid');
+  grid.innerHTML = PRODUCTS.length ? '' : '<p class="muted">No products yet — add some in the Products tab.</p>';
+  PRODUCTS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'product-tile';
+    const stock = p.stock === null ? '' :
+      `<div class="stock ${p.stock <= 5 ? 'low' : ''}">${p.stock} in stock</div>`;
+    b.innerHTML = `<div class="name">${p.name}</div><div class="price">${fmt(p.price)}</div>${stock}`;
+    b.onclick = () => addToCart(p);
+    grid.appendChild(b);
+  });
+  const d = await api('/api/dashboard');
+  $('#reg-cards').innerHTML = `
+    <div class="card good"><div class="num">${fmt(d.today_revenue)}</div><div class="label">Today's sales</div></div>
+    <div class="card"><div class="num">${d.today_count}</div><div class="label">Transactions today</div></div>
+    <div class="card good"><div class="num">${fmt(d.total_revenue)}</div><div class="label">All-time sales</div></div>
+    <div class="card ${d.low_stock.length ? '' : ''}"><div class="num">${d.low_stock.length}</div><div class="label">Low-stock products</div></div>`;
+}
+
+function addToCart(p) {
+  const line = CART.find(c => c.product_id === p.id);
+  if (line) {
+    if (p.stock !== null && line.qty >= p.stock) { flash(`Only ${p.stock} × ${p.name} in stock.`); return; }
+    line.qty++;
+  } else {
+    CART.push({product_id: p.id, description: p.name, qty: 1, price: p.price});
+  }
+  renderCart();
+}
+
+function renderCart() {
+  const ul = $('#cart-list');
+  ul.innerHTML = CART.length ? '' : '<li class="muted">Cart is empty.</li>';
+  CART.forEach((c, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <button class="qty-btn" data-a="dec">−</button>
+      <span>${c.qty}</span>
+      <button class="qty-btn" data-a="inc">+</button>
+      <span class="nm">${c.description}</span>
+      <span class="total">${fmt(c.qty * c.price)}</span>
+      <button class="icon-btn" data-a="rm" title="Remove">✕</button>`;
+    li.querySelector('[data-a=inc]').onclick = () => {
+      const p = PRODUCTS.find(x => x.id === c.product_id);
+      if (p && p.stock !== null && c.qty >= p.stock) { flash(`Only ${p.stock} × ${c.description} in stock.`); return; }
+      c.qty++; renderCart();
+    };
+    li.querySelector('[data-a=dec]').onclick = () => { c.qty > 1 ? (c.qty--, renderCart()) : (CART.splice(idx, 1), renderCart()); };
+    li.querySelector('[data-a=rm]').onclick = () => { CART.splice(idx, 1); renderCart(); };
+    ul.appendChild(li);
+  });
+  const subtotal = CART.reduce((s, c) => s + c.qty * c.price, 0);
+  const discount = Math.min(parseFloat($('#discount').value) || 0, subtotal);
+  const tax = (subtotal - discount) * ((parseFloat($('#tax').value) || 0) / 100);
+  $('#cart-subtotal').textContent = `Subtotal ${fmt(subtotal)}`;
+  $('#cart-total').textContent = fmt(subtotal - discount + tax);
+  $('#checkout').disabled = !CART.length;
+}
+
+$('#checkout').onclick = async () => {
+  try {
+    const sale = await post('/api/sales', {
+      customer: $('#customer').value,
+      payment_method: $('#payment').value,
+      discount: parseFloat($('#discount').value) || 0,
+      tax_rate: parseFloat($('#tax').value) || 0,
+      items: CART,
+    });
+    CART = [];
+    $('#discount').value = ''; $('#tax').value = ''; $('#customer').value = '';
+    renderCart();
+    if (confirm(`Sale ${sale.number} completed — ${fmt(sale.total)}.\n\nOpen printable receipt?`)) {
+      window.open('/receipt/' + sale.id, '_blank');
+    }
+    loadRegister();
+  } catch (e) { flash(e.message); }
+};
+
+async function loadSales() {
+  const sales = await api('/api/sales');
+  const tb = $('#sales-list');
+  tb.innerHTML = sales.length ? '' : '<tr><td colspan="6" class="muted">No sales yet.</td></tr>';
+  sales.forEach(s => {
+    const when = new Date(s.created_at).toLocaleString();
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td><strong>${s.number}</strong></td>
+        <td>${when}</td>
+        <td>${s.customer || '-'}</td>
+        <td><span class="badge ${s.payment_method}">${s.payment_method}</span></td>
+        <td class="r">${fmt(s.total)}</td>
+        <td><div style="display:flex;gap:4px">
+          <a class="icon-btn" href="/receipt/${s.id}" target="_blank" title="View / print receipt">🧾</a>
+          <button class="icon-btn" data-void="${s.id}" title="Void sale (restores stock)">🗑️</button>
+        </div></td>
+      </tr>`);
+  });
+  tb.onclick = async e => {
+    const b = e.target.closest('[data-void]');
+    if (b && confirm('Void this sale? Stock will be restored.')) {
+      await del('/api/sales/' + b.dataset.void);
+      loadSales();
+    }
+  };
+}
+
+async function loadProductMgmt() {
+  PRODUCTS = await api('/api/products');
+  const tb = $('#product-list');
+  tb.innerHTML = PRODUCTS.length ? '' : '<tr><td colspan="4" class="muted">No products yet.</td></tr>';
+  PRODUCTS.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${p.name}</strong></td>
+      <td class="r">${fmt(p.price)}</td>
+      <td class="r">${p.stock === null ? '—' : p.stock}</td>
+      <td><div style="display:flex;gap:4px">
+        <button class="icon-btn" data-edit="${p.id}" title="Edit">✏️</button>
+        <button class="icon-btn" data-del="${p.id}" title="Delete">🗑️</button>
+      </div></td>`;
+    tr.onclick = async e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.del) {
+        if (confirm('Delete this product?')) { await del('/api/products/' + b.dataset.del); loadProductMgmt(); }
+      } else if (b.dataset.edit) {
+        const name = prompt('Product name', p.name); if (name === null) return;
+        const price = prompt('Price', p.price); if (price === null) return;
+        const stock = prompt('Stock (blank = untracked)', p.stock ?? ''); if (stock === null) return;
+        await put('/api/products/' + p.id, {name, price, stock});
+        loadProductMgmt();
+      }
+    };
+    tb.appendChild(tr);
+  });
+}
+
+$('#product-form').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  await post('/api/products', {name: f.name.value, price: f.price.value, stock: f.stock.value});
+  f.reset();
+  loadProductMgmt();
+};
+
+async function loadSettings() {
+  SETTINGS = await api('/api/settings');
+  const f = $('#settings-form');
+  f.business_name.value = SETTINGS.business_name || '';
+  f.business_address.value = SETTINGS.business_address || '';
+  f.currency.value = SETTINGS.currency || '$';
+  f.receipt_footer.value = SETTINGS.receipt_footer || '';
+}
+
+$('#settings-form').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  SETTINGS = await put('/api/settings', {
+    business_name: f.business_name.value,
+    business_address: f.business_address.value,
+    currency: f.currency.value || '$',
+    receipt_footer: f.receipt_footer.value,
+  });
+  alert('Settings saved.');
+};
+
+loadRegister();
+</script>
+</body>
+</html>
