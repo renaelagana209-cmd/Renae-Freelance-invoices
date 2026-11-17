@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freelance Invoicing</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --accent:#2563eb; --danger:#dc2626; --green:#16a34a; --muted:#6b7280; --border:#e5e7eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:#111827; }
+  header { background:#111827; color:#fff; padding:14px 24px; display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; }
+  nav button { background:transparent; color:#d1d5db; border:none; padding:8px 14px; font-size:14px; cursor:pointer; border-radius:6px; }
+  nav button.active { background:#374151; color:#fff; }
+  main { max-width:1000px; margin:24px auto; padding:0 16px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .card .num { font-size:24px; font-weight:700; }
+  .card .label { color:var(--muted); font-size:13px; }
+  .card.warn .num { color:var(--danger); }
+  .card.good .num { color:var(--green); }
+  section.view { display:none; }
+  section.view.active { display:block; }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; align-items:flex-start; }
+  input, textarea, select { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+  textarea { width:100%; min-height:54px; }
+  button.primary { background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:14px; cursor:pointer; }
+  button.primary:hover { background:#1d4ed8; }
+  button.ghost { background:#fff; border:1px solid var(--border); padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  td.r, th.r { text-align:right; }
+  .badge { font-size:11px; padding:2px 10px; border-radius:99px; font-weight:600; text-transform:capitalize; }
+  .badge.draft { background:#e5e7eb; color:#374151; }
+  .badge.sent { background:#dbeafe; color:#1d4ed8; }
+  .badge.paid { background:#dcfce7; color:var(--green); }
+  .badge.overdue { background:#fee2e2; color:var(--danger); }
+  .actions { display:flex; gap:4px; flex-wrap:wrap; }
+  .icon-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:4px; }
+  .muted { color:var(--muted); }
+  .items-editor { width:100%; }
+  .items-editor input { width:100%; }
+  .items-editor .desc { flex:3; min-width:180px; }
+  .items-editor .qty, .items-editor .price { flex:1; min-width:70px; }
+  .totals-line { display:flex; justify-content:flex-end; gap:24px; font-size:14px; margin-top:8px; }
+  .totals-line strong { font-size:16px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>💼 Freelance Invoicing</h1>
+  <nav>
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="invoices">Invoices</button>
+    <button data-view="clients">Clients</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+</header>
+<main>
+  <section class="view active" id="view-dashboard">
+    <div class="cards" id="dash-cards"></div>
+    <div class="panel">
+      <h2>Recent invoices</h2>
+      <table><tbody id="dash-recent"></tbody></table>
+    </div>
+  </section>
+
+  <section class="view" id="view-invoices">
+    <div class="panel" id="invoice-editor" style="display:none">
+      <h2 id="editor-title">New invoice</h2>
+      <form id="invoice-form">
+        <select name="client_id" required style="flex:2;min-width:160px"><option value="">Select client…</option></select>
+        <input type="date" name="issue_date" required>
+        <input type="date" name="due_date">
+        <input type="number" name="tax_rate" step="0.01" min="0" placeholder="Tax %" style="width:90px">
+        <button class="primary" type="submit" id="editor-save">Save invoice</button>
+        <button class="ghost" type="button" id="editor-cancel">Cancel</button>
+        <textarea name="notes" placeholder="Notes / payment terms (optional)"></textarea>
+        <table class="items-editor">
+          <thead><tr><th style="width:auto">Description</th><th style="width:90px">Qty</th><th style="width:120px">Unit price</th><th style="width:110px" class="r">Amount</th><th style="width:36px"></th></tr></thead>
+          <tbody id="item-rows"></tbody>
+        </table>
+        <button class="ghost" type="button" id="add-item">+ Add line item</button>
+        <div class="totals-line"><span class="muted">Subtotal <span id="f-subtotal"></span></span><span class="muted">Tax <span id="f-tax"></span></span><span>Total <strong id="f-total"></strong></span></div>
+      </form>
+    </div>
+    <div class="panel" id="invoice-list-panel">
+      <button class="primary" id="new-invoice" style="margin-bottom:14px">+ New invoice</button>
+      <table>
+        <thead><tr><th>Invoice</th><th>Client</th><th>Issued</th><th>Due</th><th class="r">Total</th><th>Status</th><th></th></tr></thead>
+        <tbody id="invoice-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-clients">
+    <div class="panel">
+      <h2>New client</h2>
+      <form id="client-form">
+        <input type="text" name="name" placeholder="Client name" required style="flex:2;min-width:150px">
+        <input type="email" name="email" placeholder="Email">
+        <button class="primary" type="submit">Add</button>
+        <textarea name="address" placeholder="Address (optional)"></textarea>
+      </form>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Address</th><th></th></tr></thead>
+        <tbody id="client-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <h2>Business details (appear on invoices)</h2>
+      <form id="settings-form">
+        <input type="text" name="business_name" placeholder="Business / your name" style="flex:2;min-width:180px">
+        <input type="email" name="business_email" placeholder="Email">
+        <input type="text" name="currency" placeholder="Currency symbol" style="width:130px">
+        <input type="number" name="tax_rate" step="0.01" min="0" placeholder="Default tax %" style="width:130px">
+        <button class="primary" type="submit">Save</button>
+        <textarea name="business_address" placeholder="Address"></textarea>
+      </form>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+let SETTINGS = {currency:'$'};
+
+const api = async (url, opts) => {
+  const res = await fetch(url, opts && {headers:{'Content-Type':'application/json'}, ...opts});
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+  return res.json();
+};
+const post = (url, body) => api(url, {method:'POST', body:JSON.stringify(body)});
+const put = (url, body) => api(url, {method:'PUT', body:JSON.stringify(body)});
+const del = url => api(url, {method:'DELETE'});
+const fmt = v => SETTINGS.currency + (v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const today = () => new Date().toISOString().slice(0, 10);
+
+document.querySelectorAll('nav button').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('section.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
+  ({dashboard: loadDashboard, invoices: loadInvoices, clients: loadClients, settings: loadSettings})[btn.dataset.view]();
+});
+
+function statusBadge(inv) {
+  const overdue = inv.status !== 'paid' && inv.due_date && inv.due_date < today();
+  return `<span class="badge ${overdue ? 'overdue' : inv.status}">${overdue ? 'overdue' : inv.status}</span>`;
+}
+
+async function loadDashboard() {
+  const d = await api('/api/dashboard');
+  SETTINGS.currency = d.currency;
+  $('#dash-cards').innerHTML = `
+    <div class="card warn"><div class="num">${fmt(d.outstanding)}</div><div class="label">Outstanding</div></div>
+    <div class="card good"><div class="num">${fmt(d.paid_this_month)}</div><div class="label">Paid this month</div></div>
+    <div class="card good"><div class="num">${fmt(d.paid_total)}</div><div class="label">Paid all time</div></div>
+    <div class="card ${d.overdue ? 'warn' : ''}"><div class="num">${d.overdue}</div><div class="label">Overdue invoices</div></div>
+    <div class="card"><div class="num">${d.clients}</div><div class="label">Clients</div></div>`;
+  const tb = $('#dash-recent');
+  tb.innerHTML = d.recent.length ? '' : '<tr><td class="muted">No invoices yet. Create your first one in the Invoices tab.</td></tr>';
+  d.recent.forEach(inv => {
+    tb.insertAdjacentHTML('beforeend',
+      `<tr><td><strong>${inv.number}</strong></td><td>${inv.client_name}</td><td class="r">${fmt(inv.total)}</td><td>${statusBadge(inv)}</td></tr>`);
+  });
+}
+
+async function loadInvoices() {
+  const invoices = await api('/api/invoices');
+  const tb = $('#invoice-list');
+  tb.innerHTML = invoices.length ? '' : '<tr><td colspan="7" class="muted">No invoices yet.</td></tr>';
+  invoices.forEach(inv => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${inv.number}</strong></td>
+      <td>${inv.client_name}</td>
+      <td>${inv.issue_date}</td>
+      <td>${inv.due_date || '-'}</td>
+      <td class="r">${fmt(inv.total)}</td>
+      <td>${statusBadge(inv)}</td>
+      <td><div class="actions">
+        <a class="icon-btn" href="/invoice/${inv.id}" target="_blank" title="View / print">🖨️</a>
+        <button class="icon-btn" data-edit="${inv.id}" title="Edit">✏️</button>
+        ${inv.status !== 'sent' && inv.status !== 'paid' ? `<button class="icon-btn" data-status="sent" data-id="${inv.id}" title="Mark sent">📤</button>` : ''}
+        ${inv.status !== 'paid' ? `<button class="icon-btn" data-status="paid" data-id="${inv.id}" title="Mark paid">✅</button>` : ''}
+        <button class="icon-btn" data-del="${inv.id}" title="Delete">🗑️</button>
+      </div></td>`;
+    tb.appendChild(tr);
+  });
+  tb.onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.del) { if (confirm('Delete this invoice?')) { await del('/api/invoices/' + b.dataset.del); loadInvoices(); } }
+    else if (b.dataset.edit) openEditor(+b.dataset.edit);
+    else if (b.dataset.status) { await put(`/api/invoices/${b.dataset.id}/status`, {status: b.dataset.status}); loadInvoices(); }
+  };
+}
+
+function itemRow(item = {}) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="desc" placeholder="Description of work" value="${item.description || ''}"></td>
+    <td><input class="qty" type="number" step="any" min="0" value="${item.qty ?? 1}"></td>
+    <td><input class="price" type="number" step="0.01" min="0" value="${item.price ?? ''}"></td>
+    <td class="r amount muted">0.00</td>
+    <td><button type="button" class="icon-btn remove">✕</button></td>`;
+  tr.querySelector('.remove').onclick = () => { tr.remove(); updateTotals(); };
+  tr.querySelectorAll('input').forEach(i => i.oninput = updateTotals);
+  return tr;
+}
+
+function collectItems() {
+  return $$('#item-rows tr').map(tr => ({
+    description: tr.querySelector('.desc').value,
+    qty: parseFloat(tr.querySelector('.qty').value) || 0,
+    price: parseFloat(tr.querySelector('.price').value) || 0,
+  })).filter(i => i.description.trim());
+}
+
+function updateTotals() {
+  const taxRate = parseFloat($('#invoice-form').tax_rate.value) || 0;
+  const subtotal = collectItems().reduce((s, i) => s + i.qty * i.price, 0);
+  const tax = subtotal * taxRate / 100;
+  $$('#item-rows tr').forEach(tr => {
+    const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+    const price = parseFloat(tr.querySelector('.price').value) || 0;
+    tr.querySelector('.amount').textContent = fmt(qty * price);
+  });
+  $('#f-subtotal').textContent = fmt(subtotal);
+  $('#f-tax').textContent = fmt(tax);
+  $('#f-total').textContent = fmt(subtotal + tax);
+}
+
+async function openEditor(invoiceId = null) {
+  const form = $('#invoice-form');
+  form.reset();
+  $('#item-rows').innerHTML = '';
+  form.issue_date.value = today();
+  const clients = await api('/api/clients');
+  form.client_id.innerHTML = '<option value="">Select client…</option>' +
+    clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  $('#editor-title').textContent = invoiceId ? 'Edit invoice' : 'New invoice';
+  if (invoiceId) {
+    const inv = await api('/api/invoices/' + invoiceId);
+    $('#editor-save').dataset.id = invoiceId;
+    form.client_id.value = inv.client_id;
+    form.issue_date.value = inv.issue_date;
+    form.due_date.value = inv.due_date || '';
+    form.tax_rate.value = inv.tax_rate || 0;
+    form.notes.value = inv.notes || '';
+    inv.items.forEach(i => $('#item-rows').appendChild(itemRow(i)));
+  } else {
+    delete $('#editor-save').dataset.id;
+    $('#item-rows').appendChild(itemRow());
+  }
+  $('#invoice-editor').style.display = 'block';
+  $('#invoice-list-panel').style.display = 'none';
+  updateTotals();
+}
+
+function closeEditor() {
+  $('#invoice-editor').style.display = 'none';
+  $('#invoice-list-panel').style.display = 'block';
+}
+
+$('#new-invoice').onclick = () => openEditor();
+$('#editor-cancel').onclick = closeEditor;
+$('#add-item').onclick = () => { $('#item-rows').appendChild(itemRow()); updateTotals(); };
+$('#invoice-form').tax_rate.oninput = updateTotals;
+$('#invoice-form').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  const payload = {
+    client_id: +f.client_id.value,
+    issue_date: f.issue_date.value,
+    due_date: f.due_date.value,
+    tax_rate: parseFloat(f.tax_rate.value) || 0,
+    notes: f.notes.value,
+    items: collectItems(),
+  };
+  const id = $('#editor-save').dataset.id;
+  if (id) await put('/api/invoices/' + id, payload);
+  else await post('/api/invoices', payload);
+  closeEditor();
+  loadInvoices();
+};
+
+async function loadClients() {
+  const clients = await api('/api/clients');
+  const tb = $('#client-list');
+  tb.innerHTML = clients.length ? '' : '<tr><td colspan="4" class="muted">No clients yet.</td></tr>';
+  clients.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${c.name}</strong></td><td>${c.email || '-'}</td><td class="muted">${(c.address || '-').replace(/\n/g, ', ')}</td>
+      <td><div class="actions">
+        <button class="icon-btn" data-edit="${c.id}" title="Edit">✏️</button>
+        <button class="icon-btn" data-del="${c.id}" title="Delete">🗑️</button>
+      </div></td>`;
+    tr.onclick = async e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.del) { if (confirm('Delete this client?')) { await del('/api/clients/' + b.dataset.del); loadClients(); } }
+      else if (b.dataset.edit) {
+        const name = prompt('Client name', c.name); if (name === null) return;
+        const email = prompt('Email', c.email); if (email === null) return;
+        const address = prompt('Address', c.address); if (address === null) return;
+        await put('/api/clients/' + c.id, {name, email, address});
+        loadClients();
+      }
+    };
+    tb.appendChild(tr);
+  });
+}
+
+$('#client-form').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  await post('/api/clients', {name: f.name.value, email: f.email.value, address: f.address.value});
+  f.reset();
+  loadClients();
+};
+
+async function loadSettings() {
+  SETTINGS = await api('/api/settings');
+  const f = $('#settings-form');
+  f.business_name.value = SETTINGS.business_name || '';
+  f.business_email.value = SETTINGS.business_email || '';
+  f.business_address.value = SETTINGS.business_address || '';
+  f.currency.value = SETTINGS.currency || '$';
+  f.tax_rate.value = SETTINGS.tax_rate || 0;
+}
+
+$('#settings-form').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  SETTINGS = await put('/api/settings', {
+    business_name: f.business_name.value,
+    business_email: f.business_email.value,
+    business_address: f.business_address.value,
+    currency: f.currency.value || '$',
+    tax_rate: f.tax_rate.value || '0',
+  });
+  alert('Settings saved.');
+};
+
+loadDashboard();
+</script>
+</body>
+</html>
