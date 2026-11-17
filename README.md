@@ -33,3 +33,14 @@ Then open http://127.0.0.1:8000 in your browser. Data is stored in `freelance.db
 | DELETE | `/api/invoices/{id}` | Delete invoice and its items |
 | GET/PUT | `/api/settings` | Business details and defaults |
 | GET | `/invoice/{id}` | Printable invoice page |
+
+## Cashier (point-of-sale) app
+
+A second app lives in `cashier/` — a register for quick counter sales:
+
+```bash
+cd cashier
+python3 app.py
+```
+
+Then open http://127.0.0.1:8001. Features: product catalog with stock tracking, tap-to-add cart, discounts and tax, cash/card payment, printable receipts (RCP-00001…), void sales with automatic stock restore, and a sales dashboard.
